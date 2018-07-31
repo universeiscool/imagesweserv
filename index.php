@@ -14,7 +14,7 @@ if(isset($_GET['detail'])){
 	ini_set('display_errors',0);
 }
 
-$img_data = '';
+$img_data = [];
 
 function download_file($path,$fname){
 	$options = array(
@@ -47,6 +47,7 @@ function download_file($path,$fname){
 			echo 'Error 410: Server could parse the ?url= that you were looking for, because the hostname of the origin is unresolvable (DNS) or blocked by policy.';
 			die;
 		}
+		
 		if(in_array($error_code,array('400','403','404','500','502'))){
 			trigger_error('cURL Request error: '.$error.' URL: '.$path,E_USER_WARNING);
 		}
@@ -197,7 +198,7 @@ function resize_image($image,$max_height,$max_width,$transformation,$alignment,$
 		
 		// This is transparency-preserving magic!
 		$image_resized = imagecreatetruecolor($new['width'],$new['height']);
-		if(($img_data[2] == IMAGETYPE_GIF) || ($img_data[2] == IMAGETYPE_PNG)){
+		if(($img_data[2] == IMAGETYPE_GIF)){
 			$tidx = imagecolortransparent($image);
 			$palletsize = imagecolorstotal($image);
 			if($tidx >= 0 && $tidx < $palletsize){
@@ -205,12 +206,12 @@ function resize_image($image,$max_height,$max_width,$transformation,$alignment,$
 				$tidx  = imagecolorallocate($image_resized, $trnprt_color['red'], $trnprt_color['green'], $trnprt_color['blue']);
 				imagefill($image_resized, 0, 0, $tidx);
 				imagecolortransparent($image_resized, $tidx);
-			}elseif($img_data[2] == IMAGETYPE_PNG){
-				imagealphablending($image_resized, false);
-				$color = imagecolorallocatealpha($image_resized, 0, 0, 0, 127);
-				imagefill($image_resized, 0, 0, $color);
-				imagesavealpha($image_resized, true);
 			}
+		}elseif($img_data[2] == IMAGETYPE_PNG){
+			imagealphablending($image_resized, false);
+			imagesavealpha($image_resized, true);
+			$color = imagecolorallocatealpha($image_resized, 0, 0, 0, 127);
+			imagefill($image_resized, 0, 0, $color);
 		}
 		
 		imagecopyresampled($image_resized, $image, 0, 0, $new['org_x'], $new['org_y'], $new['width'], $new['height'],$new['org_width'], $new['org_height']);
@@ -302,9 +303,9 @@ function set_dimension($imageWidth,$imageHeight,$maxWidth,$maxHeight,$transforma
 			$new['org_width'] = $imageHeight*$cropRatioComputed;
 			$new['org_height'] = $imageHeight;
 			
-			if($alignment == 'r'){
+			if($alignment == 'l'){
 				$new['org_x'] = 0;
-			}elseif($alignment == 'l'){
+			}elseif($alignment == 'r'){
 				$new['org_x'] = ($imageWidth - $new['org_width']);
 			}else{
 				$new['org_x'] = ($imageWidth - $new['org_width']) / 2;
@@ -504,7 +505,7 @@ if(!empty($_GET['url'])){
 	$w = (empty($_GET['w']) OR !ctype_digit($_GET['w'])) ? '0' : $_GET['w'];
 	$t = (empty($_GET['t']) OR !in_array($_GET['t'],array('fit','fitup','square','squaredown','absolute'))) ? 'fit' : $_GET['t'];
 	$a = (empty($_GET['a']) OR !in_array($_GET['a'],array('t','b','r','l'))) ? 'c' : $_GET['a'];
-	$q = (empty($_GET['q']) OR !ctype_digit($_GET['q']) OR $_GET['q'] > 95 OR $_GET['q'] < 0) ? '85' : $_GET['q'];
+	$q = (empty($_GET['q']) OR !ctype_digit($_GET['q']) OR $_GET['q'] > 100 OR $_GET['q'] < 0) ? '85' : $_GET['q'];
 	$c = (isset($_GET['circle'])) ? '_circle' : '';
 	$il = (isset($_GET['il'])) ? '_il' : '';
 	
@@ -533,10 +534,6 @@ if(!empty($_GET['url'])){
 	//IDN-rewriting
 	if(idn_to_ascii($parts['host']) == ''){
 		$parts['host'] = utf8_encode($parts['host']);
-	}
-	
-	if(isset($_GET['encoding']) && $_GET['encoding'] == 'base64'){
-		ob_start('custom_base64');
 	}
 	
 	if(!isset($parts['scheme'])){
@@ -598,11 +595,17 @@ if(!empty($_GET['url'])){
 	header('Expires: '.gmdate("D, d M Y H:i:s", (time()+2678400)).' GMT'); //31 days
 	header('Cache-Control: max-age=2678400'); //31 days
 	if(isset($_GET['encoding']) && $_GET['encoding'] == 'base64'){
-		header('Content-type: text/plain');
+		header('Content-Type: text/plain');
+		ob_start('custom_base64');
 	}else{
-		header('Content-type: '.$img_data['mime']);
+		header('Content-Type: '.$img_data['mime']);
+		ob_start();
 	}
 	show_image($image,$q);
+	if(!isset($_GET['encoding']) || $_GET['encoding'] != 'base64'){
+		header('Content-Length: '.ob_get_length());
+	}
+	ob_end_flush();
 	exit;
 }else{
 ?>
@@ -613,10 +616,12 @@ if(!empty($_GET['url'])){
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
     <title>Image cache &amp; resize proxy</title>
     <link rel="icon" type="image/x-icon" href="favicon.ico"/>
-    <link href="//static.weserv.nl/images.css" type="text/css" rel="stylesheet"/>
-    <!--[if lte IE 9]><script src="//static.weserv.nl/html5shiv-printshiv.min.js" type="text/javascript"></script><![endif]-->
-    <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js" type="text/javascript"></script>
-    <script src="//static.weserv.nl/bootstrap.min.js" type="text/javascript"></script>
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/github-fork-ribbon-css/0.2.0/gh-fork-ribbon.min.css" integrity="sha384-HoFyoZ18hzctAGKv3BkTqlVH019/pvkU+3BKRAlDRgLuguzWZI0MMuF0JpcMOAye" crossorigin="anonymous" />
+    <link rel="stylesheet" href="//static.weserv.nl/images-v2c.css" integrity="sha384-u08bpZFfXA0HBPsRq4gtCJ9Uz/2sx6a9fLP8p+ltKIt4NbuHeWHhAiiPrUQ54H9K" crossorigin="anonymous">
+	<!--[if lt IE 9]><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-fork-ribbon-css/0.2.0/gh-fork-ribbon.ie.min.css" />
+	<script src="//static.weserv.nl/html5shiv-printshiv.min.js" type="text/javascript"></script><![endif]-->
+    <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js" type="text/javascript" integrity="sha384-8gBf6Y4YYq7Jx97PIqmTwLPin4hxIzQw5aDmUg/DDhul9fFpbbLcLh3nTIIDJKhx" crossorigin="anonymous"></script>
+    <script src="//static.weserv.nl/bootstrap.min.js" type="text/javascript" integrity="sha384-knhWhSzIcpYIfitKUjDBo/EQ3F5MWCwASUtB6UCe2N038X5KhwbGAoxmLaV8hn12" crossorigin="anonymous"></script>
 </head>
 <body data-spy="scroll" data-target=".scrollspy">
     <nav id="sidebar">
@@ -631,7 +636,7 @@ if(!empty($_GET['url'])){
         <div class="scrollbar-inner">
             <div class="scrollspy">
                 <ul id="nav" class="nav topics" data-spy="affix">
-                    <li class="dd-item active"><a href="#image-api" class="cen"><span>API 2 - RBX, FR</span></a>
+                    <li class="dd-item active"><a href="#image-api" class="cen"><span>API 2 - GitHub, DEMO</span></a>
                         <ul class="nav inner">
                             <li class="dd-item"><a href="#deprecated"><span>Deprecated</span></a></li>
                             <li class="dd-item"><a href="#quick-reference"><span>Quick reference</span></a></li>
@@ -654,7 +659,7 @@ if(!empty($_GET['url'])){
         <div class="highlightable">
             <div id="body-inner">
                 <section id="image-api" class="goto">
-                    <p>Images.<b>weserv</b>.nl is an image <b>cache</b> &amp; <b>resize</b> proxy. Our servers resize your image, cache it worldwide, and display it.</p>
+                    <p>Images.<b>weserv</b>.nl is an image <b>cache</b> &amp; <b>resize</b> proxy. Our servers resize your image, cache it worldwide, and display it. <a class="github-fork-ribbon right-top" href="https://github.com/andrieslouw/imagesweserv/issues" title="Feedback? Github!">Feedback? GitHub!</a></p>
                     <ul>
                         <li>We don't support animated images (yet).</li>
                         <li>We do support GIF, JPEG, PNG, BMP, XBM, WebP and other filetypes!</li>
@@ -663,7 +668,7 @@ if(!empty($_GET['url'])){
                         <li>We do support SSL, you can use <a href="https://images.weserv.nl/"><b>https</b>://images.weserv.nl/</a>.
                             <br /><small class="sslnote">This can be very useful for embedding HTTP images on HTTPS websites. HTTPS origin hosts can be used by <a href="https://imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/2693328-add-support-to-fetch-images-over-https">prefixing the hostname with ssl:</a></small></li>
                     </ul>
-                    <p>We're part of the <a href="https://www.cloudflare.com/">CloudFlare</a> community. Images are being cached and delivered straight from <a href="https://www.cloudflare.com/network-map">70+ global datacenters</a>. This ensures the fastest load times and best performance. On average, we process 450 000 000 images per month, which generates around 16TB of outbound traffic.</p>
+                    <p>We're part of the <a href="https://www.cloudflare.com/">CloudFlare</a> community. Images are being cached and delivered straight from <a href="https://www.cloudflare.com/network-map">80+ global datacenters</a>. This ensures the fastest load times and best performance. On average, we resize 1 million (10<sup>6</sup>) images per hour, which generates around 25TB of outbound traffic per month.</p>
                     <p>Requesting an image:</p>
                     <ul>
                         <li><code>?url=</code> (URL encoded) link to your image, without http://</li>
@@ -798,7 +803,7 @@ if(!empty($_GET['url'])){
                             <tr>
                                 <td>Base64 (data URL)</td>
                                 <td><code>encoding</code></td>
-                                <td>Encodes the image to be used directly in the src= of the <img>-tag.</td>
+                                <td>Encodes the image to be used directly in the src= of the &lt;img&gt;-tag.</td>
                                 <td><a href="#base64-encoding">info</a></td>
                             </tr>
                         </tbody>
@@ -809,11 +814,11 @@ if(!empty($_GET['url'])){
                     <h3 id="width-w">Width <code>&amp;w=</code></h3>
                     <p>Sets the width of the image, in pixels.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300" alt=""/></a>
                     <h3 id="height-h">Height <code>&amp;h=</code></h3>
                     <p>Sets the height of the image, in pixels.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;h=300"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;h=300"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;h=300"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;h=300"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;h=300" alt=""/></a>
                 </section>
                 <section id="trans" class="goto">
                     <h1>Transformation <code>&amp;t=</code></h1>
@@ -821,87 +826,64 @@ if(!empty($_GET['url'])){
                     <h3 id="trans-fit">Fit <code>&amp;t=fit</code></h3>
                     <p>Default. Resizes the image to fit within the width and height boundaries without cropping, distorting or altering the aspect ratio. <b>Will not</b> oversample the image if the requested size is larger than that of the original.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=fit"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=fit"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=fit"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=fit"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=fit" alt=""/></a>
                     <h3 id="trans-fitup">Fitup <code>&amp;t=fitup</code></h3>
                     <p>Resizes the image to fit within the width and height boundaries without cropping, distorting or altering the aspect ratio. <b>Will</b> increase the size of the image if it is smaller than the output size.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=fitup"&gt;</code></pre>
                     <h3 id="trans-square">Square <code>&amp;t=square</code></h3>
                     <p>Resizes the image to fill the width and height boundaries and crops any excess image data. The resulting image will match the width and height constraints without distorting the image. <b>Will</b> increase the size of the image if it is smaller than the output size.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square" alt=""/></a>
                      <h3 id="trans-squaredown">Squaredown <code>&amp;t=squaredown</code></h3>
                     <p>Resizes the image to fill the width and height boundaries and crops any excess image data. The resulting image will match the width and height constraints without distorting the image. <b>Will not</b> oversample the image if the requested size is larger than that of the original.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=squaredown"&gt;</code></pre>
                     <h3 id="trans-absolute">Absolute <code>&amp;t=absolute</code></h3>
                     <p>Stretches the image to fit the constraining dimensions exactly. The resulting image will fill the dimensions, and will not maintain the aspect ratio of the input image.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=absolute"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=absolute"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=absolute"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=absolute"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=absolute" alt=""/></a>
                 </section>
                 <section id="crop" class="goto">
                     <h1 id="crop-position">Crop position <code>&amp;a=</code></h1>
-                    <p>You can also set where the image is cropped by adding a crop position. Only works when <code>t=square</code>. Accepts <code>top</code>, <code>left</code>, <code>center</code>, <code>right</code> or <code>bottom</code>. Default is <code>center</code>. For more information, please see the suggestion on our UserVoice forum: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/2570350-aligning">#2570350 - Aligning</a></small>.</p>
+                    <p>You can also set where the image is cropped by adding a crop position. Only works when <code>t=square</code>. Accepts <code>top</code>, <code>left</code>, <code>center</code>, <code>right</code> or <code>bottom</code>. Default is <code>center</code>. For more information, please see the suggestion on our UserVoice forum: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/2570350-aligning">#2570350 - Aligning</a>.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;a=top"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;a=top"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;a=top"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;a=top"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;a=top" alt=""/></a>
                     <h3 id="crop-crop">Manual crop <code>&amp;crop=</code></h3>
                     <p>Crops the image to specific dimensions prior to any other resize operations. Required format: <code>width,height,x,y</code>.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;crop=300,300,680,500"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;crop=300,300,680,500"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;crop=300,300,680,500"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;crop=300,300,680,500"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;crop=300,300,680,500" alt=""/></a>
                 </section>
                 <section id="shape" class="goto">
                     <h1>Shape</h1>
                     <h3 id="shape-shape">Shape <code>&amp;shape=</code></h3>
-                    <p>Crops the image to a specific shape. Currently only supporting <code>&amp;shape=circle</code>. More info: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/3910149-add-circle-effect-to-photos">#3910149 - Add circle effect to photos</a></small>.</p>
+                    <p>Crops the image to a specific shape. Currently only supporting <code>&amp;shape=circle</code>. More info: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/3910149-add-circle-effect-to-photos">#3910149 - Add circle effect to photos</a>.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;shape=circle"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;shape=circle"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;shape=circle"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;shape=circle"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;h=300&amp;t=square&amp;shape=circle" alt=""/></a>
                     <h3 id="trim-trim">Trim <code>&amp;trim=</code></h3>
-                    <p>Trim away blank image space on edges. Use values between <code>0</code> and <code>255</code> to define a tolerance level to trim away similar color values. You also can specify just &amp;trim, which defaults to a tolerance level of 10.</p><p>More info: <a href="https://imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/3083264-able-to-remove-black-white-whitespace">#3083264 - Able to remove black/white whitespace</a></small></p>
-                    <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=ssl:upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png&amp;w=300&amp;trim"&gt;</code></pre>
-                    <a class="trimedges" href="//images.weserv.nl/?url=ssl:upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png&amp;w=300&amp;trim"><img src="//images.weserv.nl/?url=ssl:upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png&amp;w=300&amp;trim"/></a>
+                    <p>Trim away blank image space on edges. Use values between <code>0</code> and <code>255</code> to define a tolerance level to trim away similar color values. You also can specify just &amp;trim, which defaults to a tolerance level of 10.</p><p>More info: <a href="https://imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/3083264-able-to-remove-black-white-whitespace">#3083264 - Able to remove black/white whitespace</a></p>
+                    <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/transparency_demo.png&amp;w=300&amp;trim"&gt;</code></pre>
+                    <a class="trimedges" href="//images.weserv.nl/?url=rbx.weserv.nl/transparency_demo.png&amp;w=300&amp;trim"><img src="//images.weserv.nl/?url=rbx.weserv.nl/transparency_demo.png&amp;w=300&amp;trim" alt=""/></a>
                 </section>
                 <section id="encoding" class="goto">
                 	<h1>Encoding</h1>
                     <h3 id="quality-q">Quality <code>&amp;q=</code></h3>
                     <p>Defines the quality of the image. Use values between <code>0</code> and <code>100</code>. Defaults to <code>85</code>. Only relevant if the format is set to <code>jpg</code>.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;q=20"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;q=20"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;q=20"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;q=20"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;q=20" alt=""/></a>
                     <h3 id="output-output">Output <code>&amp;output=</code></h3>
-                    <p>Encodes the image to a specific format. Accepts <code>jpg</code>, <code>png</code> or <code>gif</code>. If none is given, it will honor the origin image format.</p><p>More info: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/5097964-format-conversion">#5097964 - Format conversion</a></small>.</p>
+                    <p>Encodes the image to a specific format. Accepts <code>jpg</code>, <code>png</code> or <code>gif</code>. If none is given, it will honor the origin image format.</p><p>More info: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/5097964-format-conversion">#5097964 - Format conversion</a>.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;output=gif"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;output=gif"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;output=gif"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;output=gif"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;output=gif" alt=""/></a>
                     <h3 id="interlace-progressive-il">Interlace / progressive <code>&amp;il</code></h3>
-                    <p>Adds interlacing to GIF and PNG. JPEG's become progressive.</p><p>More info: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/3998911-add-parameter-to-use-progressive-jpegs">#3998911 - Add parameter to use progressive JPEGs</a></small>.</p>
+                    <p>Adds interlacing to GIF and PNG. JPEG's become progressive.</p><p>More info: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/3998911-add-parameter-to-use-progressive-jpegs">#3998911 - Add parameter to use progressive JPEGs</a>.</p>
                     <pre><code class="language-html">&lt;img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;il"&gt;</code></pre>
-                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;il"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;il"/></a>
+                    <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;il"><img src="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;w=300&amp;il" alt=""/></a>
                     <h3 id="base64-encoding">Base64 (data URL) <code>&amp;encoding=base64</code></h3>
-                    <p>Encodes the image to be used directly in the src= of the <code>&lt;img&gt;</code>-tag. <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;crop=100,100,680,500&amp;encoding=base64">Use this link to see the output result</a>.</p><p>More info: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/4522336-return-image-base64-encoded">#4522336 - Return image base64 encoded</a></small>.</p>
+                    <p>Encodes the image to be used directly in the src= of the <code>&lt;img&gt;</code>-tag. <a href="//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;crop=100,100,680,500&amp;encoding=base64">Use this link to see the output result</a>.</p><p>More info: <a href="//imagesweserv.uservoice.com/forums/144259-images-weserv-nl-general/suggestions/4522336-return-image-base64-encoded">#4522336 - Return image base64 encoded</a>.</p>
                     <pre><code>//images.weserv.nl/?url=rbx.weserv.nl/lichtenstein.jpg&amp;crop=100,100,680,500&amp;encoding=base64</code></pre>
                 </section>
             </div>
         </div>
     </section>
-    <!-- UserVoice JavaScript -->
-    <script type="text/javascript">
-        (function() {
-            var uv = document.createElement('script');
-            uv.type = 'text/javascript';
-            uv.async = true;
-            uv.src = '//widget.uservoice.com/PLImJMGVdhdO2160d8dog.js';
-            var s = document.getElementsByTagName('script')[0];
-            s.parentNode.insertBefore(uv, s)
-        })();
-        UserVoice = window.UserVoice || [];
-        UserVoice.push(['showTab', 'classic_widget', {
-            mode: 'full',
-            primary_color: '#292929',
-            link_color: '#a72376',
-            default_mode: 'feedback',
-            forum_id: 144259,
-            tab_label: 'Feedback',
-            tab_color: '#a72376',
-            tab_position: 'top-right',
-            tab_inverted: false
-        }]);
-    </script>
 </body>
 </html>
 <?php

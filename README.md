@@ -44,7 +44,7 @@ Full documentation can be found at [images.weserv.nl](https://images.weserv.nl/)
 
 ## Support
 
-[UserVoice forum](https://imagesweserv.uservoice.com/).
+Take a look at [our wiki](https://github.com/andrieslouw/imagesweserv/wiki), or [see issues](https://github.com/andrieslouw/imagesweserv/issues) to report any problems or missing features.
 
 ## Credits
 [![Andries Louw Wolthuizen](https://avatars2.githubusercontent.com/u/11487455?v=3&s=120)](https://github.com/andrieslouw) | [![Kleis Auke Wolthuizen](https://avatars2.githubusercontent.com/u/12746591?v=3&s=120)](https://github.com/kleisauke)
